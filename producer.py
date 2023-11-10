@@ -1,20 +1,29 @@
-import json
-import random
-import time
 from kafka import KafkaProducer
+import json
+import time
+import random
+from generator import generar_datos
 
-# Dominio: lab9.alumchat.xyz
-# IP: 157.245.244.105
-# Puerto: 9092
+# Configuración del productor Kafka
+producer = KafkaProducer(
+    bootstrap_servers='lab9.alumchat.xyz:9092',
+    value_serializer=lambda v: json.dumps(v).encode('utf-8')
+)
 
-producer = KafkaProducer(bootstrap_servers='localhost:9092')
+topic = '20461'
 
-def enviar_datos_kafka(datos_json):
-    # Envía los datos al topic 'estacion_meteorologica'.
-    producer.send('estacion_meteorologica', datos_json.encode('utf-8'))
+# Ciclo para enviar datos cada 15 a 30 segundos
+try:
+    while True:
+        data = generar_datos()
+        producer.send(topic, value=data)
+        print(f"Sent data: {data}")
 
-# Simulamos la generación y envío de datos cada 20 segundos (como ejemplo).
-while True:
-    datos = generar_datos_meteorologicos()
-    enviar_datos_kafka(datos)
-    time.sleep(20)
+        time.sleep(random.uniform(15, 30))
+
+except KeyboardInterrupt:
+    print("Deteniendo el productor...")
+
+finally:
+    producer.flush()
+    producer.close()
