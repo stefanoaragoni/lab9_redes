@@ -1,25 +1,20 @@
 import json
 import random
 import time
+from kafka import KafkaProducer
 
-def generar_datos():
-    temperatura = random.gauss(50, 10)      # Temperatura e
-    humedad = random.gauss(50, 10)
-    
-    # Genera un valor aleatorio para la dirección del viento entre 0 y 360 grados.
-    direccion_viento = random.randint(0, 360)
-    
-    # Empaqueta los datos en un formato JSON.
-    datos_json = json.dumps({
-        'temperatura': temperatura,
-        'humedad': humedad,
-        'direccion_viento': direccion_viento
-    })
-    
-    return datos_json
+# Dominio: lab9.alumchat.xyz
+# IP: 157.245.244.105
+# Puerto: 9092
 
-# Simulamos la generación de datos cada 20 segundos (como ejemplo).
+producer = KafkaProducer(bootstrap_servers='localhost:9092')
+
+def enviar_datos_kafka(datos_json):
+    # Envía los datos al topic 'estacion_meteorologica'.
+    producer.send('estacion_meteorologica', datos_json.encode('utf-8'))
+
+# Simulamos la generación y envío de datos cada 20 segundos (como ejemplo).
 while True:
-    datos = generar_datos()
-    print(datos)
-    time.sleep(20) # Espera 20 segundos antes de generar nuevos datos.
+    datos = generar_datos_meteorologicos()
+    enviar_datos_kafka(datos)
+    time.sleep(20)
