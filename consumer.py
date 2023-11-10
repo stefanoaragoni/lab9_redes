@@ -4,43 +4,46 @@ import queue
 import matplotlib.pyplot as plt
 from kafka import KafkaConsumer
 
-# Configuración del consumidor Kafka
-bootstrap_servers = 'lab9.alumchat.xyz:9092'
-topic_name = '20461'
-group_id = 'my-group'
-
+# Cola para almacenar los datos que llegan del consumidor.
 data_queue = queue.Queue()
 
+# Configuración del consumidor Kafka.
+# Cabe destacar que lo pusimos en un hilo para que no se bloquee el hilo principal de la gráfica.
 def kafka_consumer_thread():
     consumer = KafkaConsumer(
-        topic_name,
-        group_id=group_id,
-        bootstrap_servers=bootstrap_servers,
+        '20461',
+        bootstrap_servers = 'lab9.alumchat.xyz:9092',
         value_deserializer=lambda x: json.loads(x.decode('utf-8'))
     )
 
     for message in consumer:
         data_queue.put(message.value)
 
+# Se inicia el hilo del consumidor.
 consumer_thread = threading.Thread(target=kafka_consumer_thread)
 consumer_thread.daemon = True
 consumer_thread.start()
 
+# Arrays para almacenar los datos que se van a graficar.
 temperaturas = []
 humedades = []
 direcciones_viento = []
 
+# Grafica ion para que se actualice en tiempo real.
 plt.ion() 
 fig, ax = plt.subplots(3, 1, figsize=(10, 8))
 
+# Función para actualizar la gráfica. Se ejecuta en el hilo principal.
 def update_plots():
     while True:
         try:
             if not data_queue.empty():
+                # Se obtienen los datos de la cola.
                 data = data_queue.get()
                 data = json.loads(data)
 
-                temperaturas.append(data['temperatura'])
+                # Se almacenan los datos en los arrays.
+                temperaturas.append(data['temperatura'])            
                 humedades.append(data['humedad'])
                 direcciones_viento.append(data['direccion_viento'])
 
