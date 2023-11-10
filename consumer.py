@@ -1,74 +1,86 @@
-from kafka import KafkaConsumer
 import json
+import threading
+import queue
 import matplotlib.pyplot as plt
-from collections import deque
-from threading import Thread
-import time
-
-# Función para procesar los mensajes recibidos
-def procesar_mensaje(mensaje):
-    return json.loads(mensaje.value)
-
-# Función para graficar los datos en vivo
-def plot_all_data(all_temp, all_hume, all_wind):
-    plt.clf()
-    plt.subplot(3, 1, 1)
-    plt.plot(all_temp, label='Temperatura')
-    plt.title('Temperatura')
-    plt.legend()
-
-    plt.subplot(3, 1, 2)
-    plt.plot(all_hume, label='Humedad')
-    plt.title('Humedad')
-    plt.legend()
-
-    plt.subplot(3, 1, 3)
-    plt.plot(all_wind, label='Dirección del viento')
-    plt.title('Dirección del Viento')
-    plt.legend()
-
-    plt.tight_layout()
-    plt.draw()
-
-# Inicializar listas para almacenar los datos
-all_temp = deque(maxlen=50)  # Almacenará las últimas 50 temperaturas
-all_hume = deque(maxlen=50)  # Almacenará las últimas 50 humedades
-all_wind = deque(maxlen=50)  # Almacenará las últimas 50 direcciones del viento
+from kafka import KafkaConsumer
 
 # Configuración del consumidor Kafka
-consumer = KafkaConsumer(
-    '20461',  # Tu número de carné como nombre del topic
-    group_id='group1',
-    bootstrap_servers='lab9.alumchat.xyz:9092',
-    value_deserializer=lambda m: json.loads(m.decode('utf-8'))
-)
+bootstrap_servers = 'lab9.alumchat.xyz:9092'
+topic_name = '20461'
+group_id = 'my-group'
 
-# Configurar la gráfica
-plt.ion()
-fig = plt.figure(figsize=(10, 7))
+# Cola para la comunicación entre el hilo de consumidor y el hilo principal
+data_queue = queue.Queue()
 
-# Función para consumir y graficar datos
-def consume_and_plot():
-    for mensaje in consumer:
-        print(mensaje)
-        payload = procesar_mensaje(mensaje)
-        all_temp.append(payload['temperatura'])
-        all_hume.append(payload['humedad'])
-        all_wind.append(payload['direccion_viento'])
+# Función para el hilo de consumidor que recibe los mensajes de Kafka y los coloca en la cola
+def kafka_consumer_thread():
+    consumer = KafkaConsumer(
+        topic_name,
+        group_id=group_id,
+        bootstrap_servers=bootstrap_servers,
+        value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+    )
 
-        plot_all_data(all_temp, all_hume, all_wind)
-        plt.pause(0.1)  # Pausa con tiempo suficiente para que se actualice la gráfica
+    for message in consumer:
+        data_queue.put(message.value)
 
-# Iniciar el proceso de consumo y graficación en un hilo aparte
-thread = Thread(target=consume_and_plot)
-thread.start()
+# Inicialización y comienzo del hilo de consumidor
+consumer_thread = threading.Thread(target=kafka_consumer_thread)
+consumer_thread.daemon = True
+consumer_thread.start()
 
-# Mantener el script corriendo para que el hilo no muera
-try:
+# Inicialización de las listas para los datos
+temperaturas = []
+humedades = []
+direcciones_viento = []
+
+# Configuración inicial de la figura de matplotlib
+plt.ion()  # Activa el modo interactivo
+fig, ax = plt.subplots(3, 1, figsize=(10, 8))
+
+# Función para actualizar las gráficas
+def update_plots():
     while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    print("Deteniendo el consumidor...")
-finally:
-    consumer.close()
-    plt.close(fig)
+        try:
+            # Obtener datos de la cola
+            if not data_queue.empty():
+                data = data_queue.get()
+
+                # Asegúrate de deserializar el string JSON a un diccionario de Python
+                data = json.loads(data)
+
+                # Ahora puedes acceder a los datos como esperabas
+                temperaturas.append(data['temperatura'])
+                humedades.append(data['humedad'])
+                direcciones_viento.append(data['direccion_viento'])
+
+                # Actualiza la gráfica de temperatura
+                ax[0].cla()
+                ax[0].plot(temperaturas, label='Temperatura')
+                ax[0].set_title('Temperatura')
+                ax[0].legend()
+
+                # Actualiza la gráfica de humedad
+                ax[1].cla()
+                ax[1].plot(humedades, label='Humedad')
+                ax[1].set_title('Humedad')
+                ax[1].legend()
+
+                # Actualiza la gráfica de dirección del viento
+                ax[2].cla()
+                ax[2].plot(direcciones_viento, label='Dirección del Viento')
+                ax[2].set_title('Dirección del Viento')
+                ax[2].legend()
+
+                # Redibuja las gráficas
+                plt.draw()
+
+            plt.pause(0.1)  # Pausa breve para que se actualice la GUI
+
+        except KeyboardInterrupt:
+            print("Deteniendo el consumidor y cerrando la gráfica...")
+            plt.close(fig)
+            break
+
+# Comienza la actualización de las gráficas
+update_plots()
